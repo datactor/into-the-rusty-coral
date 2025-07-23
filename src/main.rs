@@ -1,3 +1,4 @@
+//use chrono::format;
 //use clap::builder::Str;
 use clap::{Arg, Command};
 use dirs::home_dir;
@@ -10,11 +11,11 @@ use chrono::*;
 struct Todo {
     id: usize,
     title: String,
-    creat_time: String,
-    start_time: String,
-    finish_time: String,
-    scheduled_time: String,
-    deadline: String,
+    creat_time: Option<NaiveDateTime>,
+    start_time: Option<NaiveDateTime>,
+    finish_time: Option<NaiveDateTime>,
+    scheduled_time: Option<NaiveDateTime>,
+    deadline_time: Option<NaiveDateTime>,
     state: State,
 }
 #[derive(Debug)]
@@ -28,15 +29,15 @@ enum State {
 }
 
 impl Todo {
-    fn new(id: usize, title: String, creat_time: String, scheduled_time: String, deadline: String) -> Self {
+    fn new(id: usize, title: String, creat_time: Option<NaiveDateTime>, scheduled_time: Option<NaiveDateTime>, deadline: Option<NaiveDateTime>) -> Self {
         Self {
             id,
             title,
-            creat_time, 
-            start_time: String::from("Not start"),
-            finish_time: String::from("Not finish"),
+            creat_time,
+            start_time: None,
+            finish_time: None,
             scheduled_time,
-            deadline,
+            deadline_time: deadline,
             state: State::Notstarted,
         }
     }
@@ -52,11 +53,10 @@ fn main() {
             Command::new("add")
                 .about("Add a new task")
                 .arg(Arg::new("title").required(true).help("Task name"))
-                .arg(Arg::new("scheduled").short('c').long("scheduled"))
-                .arg(Arg::new("deadline").short('d').long("deadline"))
+                .arg(Arg::new("scheduled").help("Y-M-D_H:M:S").value_parser(parse_datetime).short('c').long("scheduled"))
+                .arg(Arg::new("deadline").help("Y-M-D_H:M:S").value_parser(parse_datetime).short('d').long("deadline"))
         )
-        .subcommand(
-            Command::new("list").about("Show all tasks"))
+        .subcommand(Command::new("list").about("Show all tasks"))
         .get_matches();
 
     let mut tasks = load_tasks();
@@ -66,24 +66,35 @@ fn main() {
             let none = String::from("None");
             let id = tasks.len();
             let title = sub_m.get_one::<String>("title").unwrap();
-            let scheduled_time = sub_m.get_one::<String>("scheduled").unwrap_or(&none);
+            let scheduled = sub_m.get_one::<String>("scheduled").unwrap_or(&none);
+            let scheduled_time: Option<NaiveDateTime> = NaiveDateTime::parse_from_str(&scheduled, "%Y-%m-%d_%H:%M:%S").ok();
             let deadline = sub_m.get_one::<String>("deadline").unwrap_or(&none);
-            let creat_time = Local::now().format("%Y-%m-%d %H:%M:%S"); //"%Y-%m-%d %H:%M:%S"
-            
-            tasks.push(Todo::new(id, title.to_string(), creat_time.to_string(), scheduled_time.to_string(), deadline.to_string()));
+            let deadline_time: Option<NaiveDateTime> = NaiveDateTime::parse_from_str(&deadline, "%Y-%m-%d_%H:%M:%S").ok();
+            let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            let creat_time= NaiveDateTime::parse_from_str(&now, "%Y-%m-%d %H:%M:%S").ok(); //%Y-%m-%d %H:%M:%S
+
+            tasks.push(Todo::new(id, title.to_string(), creat_time, scheduled_time, deadline_time));
             save_tasks(tasks);
         }
         Some(("list", _)) => {
             if tasks.is_empty() {
                 println!("No tasks yet");
             } else {
-                println!("ID.   title.         creat_time.            start_time.            finish_time.            scheduled_time.            deadline.            done.");
+                println!("ID.   title.              creat_time.          start_time.          finish_time.         scheduled_time.      deadline.            done.");
                 for task in &tasks {
-                    println!("{}.   {}.   {}.   {}.   {}.   {}.   {}.   {:?}.", task.id, task.title, task.creat_time, task.start_time, task.finish_time, task.scheduled_time, task.deadline, task.state);
+                    println!("{:<4} {:<20} {:<20} {:<20} {:<20} {:<20} {:<20} {:?}",
+                    task.id, task.title, task.creat_time.map_or("None".to_string(), |dt| dt.to_string()), task.start_time.map_or("None".to_string(), |dt| dt.to_string()), task.finish_time.map_or("None".to_string(), |dt| dt.to_string()), task.scheduled_time.map_or("None".to_string(), |dt| dt.to_string()), task.deadline_time.map_or("None".to_string(), |dt| dt.to_string()), task.state);
                 }
             }
         }
         _ => unreachable!(),
+    }
+}
+
+fn parse_datetime(s: &str) -> Result<String, String> {
+    match chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d_%H:%M:%S") {
+        Ok(_) => Ok(s.to_string()),
+        Err(e) => Err(format!("날짜 형식 오류: {} (입력: '{}')", e, s)),
     }
 }
 
@@ -111,7 +122,7 @@ fn load_tasks() -> Vec<Todo> {
                     } else {
                         format!("{}}}", s)
                     };
-                    from_json(&x)
+                    Some(from_json(&x))
                 })
                 .collect()
         } else {
@@ -125,31 +136,32 @@ fn load_tasks() -> Vec<Todo> {
 
 
 fn to_json(task: &Todo) -> String {
+    //println!("{}", task.creat_time.format("%Y-%m-%d %H:%M:%S"));
     format!(
         "{{\"id\": {}, \"title\": {}, \"creat_time\": {}, \"start_time\": {}, \"finish_time\": {}, \"scheduled_time\": {}, \"deadline\": {}, \"state\": {:?}}}",
-        task.id, task.title, task.creat_time, task.start_time, task.finish_time, task.scheduled_time, task.deadline, task.state
+        task.id, task.title, task.creat_time.map_or("None".to_string(), |dt| dt.to_string()), task.start_time.map_or("None".to_string(), |dt| dt.to_string()), task.finish_time.map_or("None".to_string(), |dt| dt.to_string()), task.scheduled_time.map_or("None".to_string(), |dt| dt.to_string()), task.deadline_time.map_or("None".to_string(), |dt| dt.to_string()), task.state
     )
 }
 
-fn from_json(s: &str) -> Option<Todo> {
+fn from_json(s: &str) -> Todo {
     let s = s.trim();
-    if !s.starts_with('{') || !s.ends_with('}') {
-        return None;
-    }
+    // if !s.starts_with('{') || !s.ends_with('}') {
+    //     return None;
+    // }
 
     let mut id = 0;
     let mut title = String::new();
-    let mut creat_time = String::new();
-    let mut start_time = String::new();
-    let mut finish_time = String::new();
-    let mut scheduled_time = String::new();
-    let mut deadline = String::new();
+    let mut creat_time: Option<NaiveDateTime> = None;
+    let mut start_time: Option<NaiveDateTime> = None;
+    let mut finish_time: Option<NaiveDateTime> = None;
+    let mut scheduled_time: Option<NaiveDateTime> = None;
+    let mut deadline_time: Option<NaiveDateTime> = None;
     let mut state = "Done";
     let state_e: State;
 
     for todo in s[1..s.len() - 1].split(',') {
         let parts: Vec<_> = todo
-            .split("\":")
+            .split(": ")
             .map(|x| x.trim().trim_matches('"'))
             .collect();
 
@@ -160,11 +172,11 @@ fn from_json(s: &str) -> Option<Todo> {
         match parts[0] {
             "id" => id = parts[1].parse().unwrap_or(0),
             "title" => title = parts[1].to_string(),
-            "creat_time" => creat_time = parts[1].to_string(),
-            "start_time" => start_time = parts[1].to_string(),
-            "finish_time" => finish_time = parts[1].to_string(),
-            "scheduled_time" => scheduled_time = parts[1].to_string(),
-            "deadline" => deadline = parts[1].to_string(),
+            "creat_time" => creat_time = NaiveDateTime::parse_from_str(parts[1], "%Y-%m-%d %H:%M:%S").ok(),
+            "start_time" => start_time = NaiveDateTime::parse_from_str(parts[1], "%Y-%m-%d %H:%M:%S").ok(),
+            "finish_time" => finish_time = NaiveDateTime::parse_from_str(parts[1], "%Y-%m-%d %H:%M:%S").ok(),
+            "scheduled_time" => scheduled_time = NaiveDateTime::parse_from_str(parts[1], "%Y-%m-%d %H:%M:%S").ok(),
+            "deadline" => deadline_time = NaiveDateTime::parse_from_str(parts[1], "%Y-%m-%d %H:%M:%S").ok(),
             "state" => state = parts[1],
             _ => {}
         }
@@ -179,11 +191,8 @@ fn from_json(s: &str) -> Option<Todo> {
             _ => state_e = State::Done,
     };
 
-    if title.is_empty() {
-        None
-    } else {
-        Some(Todo { id, title, creat_time, start_time, finish_time, scheduled_time, deadline, state:state_e })
-    }
+    Todo { id, title, creat_time, start_time, finish_time, scheduled_time, deadline_time, state:state_e }
+    
 }
 
 fn save_tasks(tasks: Vec<Todo>) {
