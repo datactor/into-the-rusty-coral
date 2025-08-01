@@ -1,6 +1,7 @@
 //use chrono::format;
 //use clap::builder::Str;
-use clap::{value_parser, Arg, Command};
+//use clap::{value_parser, Arg, ArgAction, Command};
+use clap::*;
 use dirs::home_dir;
 //use std::any::Any;
 use std::fs;
@@ -20,6 +21,7 @@ struct Todo {
     state: State,
 }
 #[derive(Debug)]
+#[derive(PartialEq)]
 enum State {
     Done,
     Pending,
@@ -57,10 +59,25 @@ fn main() {
                 .arg(Arg::new("scheduled").help("Set deadline time (Y-M-D_H:M:S)").value_parser(verification_time).short('h').long("scheduled"))
                 .arg(Arg::new("deadline").help("Set Scheduled start time (Y-M-D_H:M:S)").value_parser(verification_time).short('d').long("deadline"))
         )
-        .subcommand(Command::new("list").about("Show all tasks"))
+        .subcommand(
+            Command::new("list")
+                .about("Show tasks")
+                .arg(Arg::new("done").help("Show done tasks").short('d').long("done").action(ArgAction::SetTrue))
+                .arg(Arg::new("pending").help("Show pending tasks").short('p').long("pending").action(ArgAction::SetTrue))
+                .arg(Arg::new("ongoing").help("Show ongoing tasks").short('g').long("ongoing").action(ArgAction::SetTrue))
+                .arg(Arg::new("not-started").help("Show not-started tasks").short('n').long("not-started").action(ArgAction::SetTrue))
+                .arg(Arg::new("overdue").help("Show tasks past their deadline").short('o').long("overdue").action(ArgAction::SetTrue))
+                .arg(Arg::new("should-start").help("Show tasks that have passed their scheduled start date but have not yet started").short('s').long("should-start").action(ArgAction::SetTrue))
+                .arg(Arg::new("scheduled-at").help("Show scheduled tasks for a specific date").long("scheduled-at"))
+                .arg(Arg::new("scheduled-before").help("Show tasks scheduled before a specific date").long("scheduled-before"))
+                .arg(Arg::new("scheduled-after").help("Show tasks scheduled after a specific date").long("scheduled-after"))
+                .arg(Arg::new("deadline-at").help("Show tasks due on a specific date").long("deadline-at"))
+                .arg(Arg::new("deadline-after").help("Show tasks due after a specific date").long("deadline-after"))
+                .arg(Arg::new("deadline-before").help("Show tasks due before a specific date").long("deadline-before"))
+        )
         .subcommand(
             Command::new("edit")
-                .about("Edit todo list")
+                .about("Edit todo task")
                 .arg(Arg::new("id").required(true).value_parser(value_parser!(u32)).help("ID to edit"))
                 .arg(Arg::new("title").help("Edit title").short('t').long("title"))
                 .arg(Arg::new("creat").help("Edit creat_time").short('c').long("creat"))
@@ -71,80 +88,103 @@ fn main() {
         )
         .subcommand(
             Command::new("done")
-            .about("completion processing")
+            .about("completion task")
             .arg(Arg::new("id").required(true).value_parser(value_parser!(u32)).help("ID to completion"))
         )
         .subcommand(
             Command::new("delete")
-            .about("delete processing")
+            .about("delete task")
             .arg(Arg::new("id").required(true).value_parser(value_parser!(u32)).help("ID to delete"))
         )
         .subcommand(
             Command::new("start")
-            .about("start processing")
+            .about("start task")
             .arg(Arg::new("id").required(true).value_parser(value_parser!(u32)).help("ID to start"))
         )
         .subcommand(
             Command::new("pending")
-            .about("pending processing")
+            .about("pending task")
             .arg(Arg::new("id").required(true).value_parser(value_parser!(u32)).help("ID to pending"))
         )
         .get_matches();
 
-    //let mut done_check = load_tasks();
     let mut tasks = load_tasks();
 
     match matches.subcommand() {
         Some(("add", sub_m)) => {
-            let none = String::from("None");
             let id = if tasks.len() < tasks[tasks.len() - 1].id{
                 tasks[tasks.len() - 1].id + 1
             } else {
                 tasks.len()
             };
             let title = sub_m.get_one::<String>("title").unwrap();
-            let scheduled = sub_m.get_one::<String>("scheduled").unwrap_or(&none);
-            let scheduled_time: Option<NaiveDateTime> = NaiveDateTime::parse_from_str(&scheduled, "%Y-%m-%d_%H:%M:%S").ok();
-            let deadline = sub_m.get_one::<String>("deadline").unwrap_or(&none);
-            let deadline_time: Option<NaiveDateTime> = NaiveDateTime::parse_from_str(&deadline, "%Y-%m-%d_%H:%M:%S").ok();
-            let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-            let creat_time= NaiveDateTime::parse_from_str(&now, "%Y-%m-%d %H:%M:%S").ok(); //%Y-%m-%d %H:%M:%S
+
+            let none = String::from("None");
+            let scheduled_time = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("scheduled").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
+            let deadline_time = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("deadline").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
+            let creat_time= NaiveDateTime::parse_from_str(&Local::now().format("%Y-%m-%d %H:%M:%S").to_string(), "%Y-%m-%d %H:%M:%S").ok();
 
             tasks.push(Todo::new(id, title.to_string(), creat_time, scheduled_time, deadline_time));
             save_tasks(tasks);
         }
-        Some(("list", _)) => {
+        Some(("list", sub_m)) => {
+            let mut filters = vec![];
+            let done = sub_m.get_flag("done");
+            let pending = sub_m.get_flag("pending");
+            let ongoing = sub_m.get_flag("ongoing");
+            let not_started = sub_m.get_flag("not-started");
+
+            let overdue = sub_m.get_flag("overdue");
+            let should_start = sub_m.get_flag("should-start");
+            
+            let none = String::from("None");
+            let scheduled_at = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("scheduled-at").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
+            let scheduled_before = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("scheduled-before").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
+            let scheduled_after = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("scheduled-after").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
+            let deadline_at = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("deadline-at").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
+            let deadline_before = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("deadline-before").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
+            let deadline_after = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("deadline-after").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
+
             if tasks.is_empty() {
                 println!("No tasks yet");
             } else {
                 println!("ID.   title.              creat_time.          start_time.          finish_time.         scheduled_time.      deadline.            done.");
-                for task in &tasks {
-                    println!("{:<4} {:<20} {:<20} {:<20} {:<20} {:<20} {:<20} {:?}",
-                    task.id, 
-                    task.title, 
-                    task.creat_time.map_or("None".to_string(), |dt| dt.to_string()), 
-                    task.start_time.map_or("None".to_string(), |dt| dt.to_string()), 
-                    task.finish_time.map_or("None".to_string(), |dt| dt.to_string()), 
-                    task.scheduled_time.map_or("None".to_string(), |dt| dt.to_string()), 
-                    task.deadline_time.map_or("None".to_string(), |dt| dt.to_string()), 
-                    task.state);
+                if done {
+                    filters.push(State::Done);
+                }
+                if pending {
+                    filters.push(State::Pending);
+                }
+                if ongoing {
+                    filters.push(State::Ongoing);
+                }
+                if not_started {
+                    filters.push(State::Notstarted);
+                }
+
+                if filters.is_empty() {
+                    for task in &tasks {
+                        show_list(task);
+                    }
+                } else {
+                    for task in &tasks {
+                        if filters.contains(&task.state) {
+                            show_list(task);
+                        }
+                    }
                 }
             }
         }
         Some(("edit", sub_m)) => {
-            let none = String::from("None");
             let id = sub_m.get_one::<u32>("id").unwrap();
+
+            let none = String::from("None");
             let title = sub_m.get_one::<String>("title").unwrap_or(&none);
-            let creat = sub_m.get_one::<String>("creat").unwrap_or(&none);
-            let creat_time: Option<NaiveDateTime> = NaiveDateTime::parse_from_str(&creat, "%Y-%m-%d_%H:%M:%S").ok();
-            let start = sub_m.get_one::<String>("start").unwrap_or(&none);
-            let start_time: Option<NaiveDateTime> = NaiveDateTime::parse_from_str(&start, "%Y-%m-%d_%H:%M:%S").ok();
-            let finish = sub_m.get_one::<String>("finish").unwrap_or(&none);
-            let finish_time: Option<NaiveDateTime> = NaiveDateTime::parse_from_str(&finish, "%Y-%m-%d_%H:%M:%S").ok();           
-            let scheduled = sub_m.get_one::<String>("scheduled").unwrap_or(&none);
-            let scheduled_time: Option<NaiveDateTime> = NaiveDateTime::parse_from_str(&scheduled, "%Y-%m-%d_%H:%M:%S").ok();
-            let deadline = sub_m.get_one::<String>("deadline").unwrap_or(&none);
-            let deadline_time: Option<NaiveDateTime> = NaiveDateTime::parse_from_str(&deadline, "%Y-%m-%d_%H:%M:%S").ok();
+            let creat_time = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("creat").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
+            let start_time = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("start").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
+            let finish_time = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("finish").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();           
+            let scheduled_time = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("scheduled").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
+            let deadline_time = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("deadline").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
 
             if tasks.is_empty() {
                 println!("No tasks yet");
@@ -152,22 +192,19 @@ fn main() {
                 if let Some(task) = tasks.iter_mut().find(|t|t.id as u32 == *id) {
                     if none != *title {
                         task.title = title.clone();
+                    } if let Some(t) = creat_time {
+                        task.creat_time = Some(t);
+                    } if let Some(t) = start_time {
+                        task.start_time = Some(t);
+                    } if let Some(t) = finish_time {
+                        task.finish_time = Some(t);
+                    } if let Some(t) = scheduled_time {
+                        task.scheduled_time = Some(t);
+                    } if let Some(t) = deadline_time {
+                        task.deadline_time = Some(t);
                     }
-                    if none != *creat {
-                        task.creat_time = creat_time;
-                    }
-                    if none != *start {
-                        task.start_time = start_time;
-                    }
-                    if none != *finish {
-                        task.finish_time = finish_time;
-                    }
-                    if none != *scheduled {
-                        task.scheduled_time = scheduled_time;
-                    }
-                    if none != *deadline {
-                        task.deadline_time = deadline_time;
-                    }
+                } else {
+                    println!("There is no task with that number.");
                 }
                 save_tasks(tasks);
             }
@@ -179,6 +216,8 @@ fn main() {
             } else {
                 if let Some(task) = tasks.iter_mut().find(|t|t.id as u32 == *id) {
                     task.state = State::Done;
+                } else {
+                    println!("There is no task with that number.");
                 }
                 save_tasks(tasks);
             }
@@ -188,20 +227,25 @@ fn main() {
             if tasks.is_empty() {
                 println!("No tasks yet");
             } else {
-                tasks.retain(|task| task.id != *id as usize);
+                if tasks.iter().any(|t| t.id as u32 == *id) {
+                    tasks.retain(|task| task.id != *id as usize);
+                } else {
+                    println!("There is no task with that number.");
+                }
                 save_tasks(tasks);
             }
         }
         Some(("start", sub_m)) => {
             let id = sub_m.get_one::<u32>("id").unwrap();
-            let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-            let start_time= NaiveDateTime::parse_from_str(&now, "%Y-%m-%d %H:%M:%S").ok();
+            let start_time= NaiveDateTime::parse_from_str(&Local::now().format("%Y-%m-%d %H:%M:%S").to_string(), "%Y-%m-%d %H:%M:%S").ok();
             if tasks.is_empty() {
                 println!("No tasks yet");
             } else {
                 if let Some(task) = tasks.iter_mut().find(|t|t.id as u32 == *id) {
                     task.state = State::Ongoing;
                     task.start_time = start_time;
+                } else {
+                    println!("There is no task with that number.");
                 }
                 save_tasks(tasks);
             }
@@ -213,6 +257,8 @@ fn main() {
             } else {
                 if let Some(task) = tasks.iter_mut().find(|t|t.id as u32 == *id) {
                     task.state = State::Pending;
+                } else {
+                    println!("There is no task with that number.");
                 }
                 save_tasks(tasks);
             }
@@ -222,19 +268,18 @@ fn main() {
     }
 }
 
-// fn done_check(check: Vec<Todo>) -> Vec<Todo> {
-//     for d in check {
-//         match d.state {
-//             State::Done => continue,
-//             State::Pending => continue,
-//             State::Ongoing => continue,
-//             State::Notstarted => todo!(),
-//             State::Overdue => todo!(),
-//             State::Shouldstart => todo!(),
-//         }
-//     }
-//     check    
-// }
+fn show_list(task: &Todo) {
+    println!("{:<4} {:<20} {:<20} {:<20} {:<20} {:<20} {:<20} {:?}",
+    task.id, 
+    task.title, 
+    task.creat_time.map_or("None".to_string(), |dt| dt.to_string()), 
+    task.start_time.map_or("None".to_string(), |dt| dt.to_string()), 
+    task.finish_time.map_or("None".to_string(), |dt| dt.to_string()), 
+    task.scheduled_time.map_or("None".to_string(), |dt| dt.to_string()), 
+    task.deadline_time.map_or("None".to_string(), |dt| dt.to_string()), 
+    task.state);
+}
+
 
 fn verification_time(s: &str) -> Result<String, String> {
     match chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d_%H:%M:%S") {
