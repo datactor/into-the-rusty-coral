@@ -27,8 +27,6 @@ enum State {
     Pending,
     Ongoing,
     Notstarted,
-    Overdue,
-    Shouldstart,
 }
 
 impl Todo {
@@ -64,10 +62,10 @@ fn main() {
                 .about("Show tasks")
                 .arg(Arg::new("done").help("Show done tasks").short('d').long("done").action(ArgAction::SetTrue))
                 .arg(Arg::new("pending").help("Show pending tasks").short('p').long("pending").action(ArgAction::SetTrue))
-                .arg(Arg::new("ongoing").help("Show ongoing tasks").short('g').long("ongoing").action(ArgAction::SetTrue))
+                .arg(Arg::new("ongoing").help("Show ongoing tasks").short('o').long("ongoing").action(ArgAction::SetTrue))
                 .arg(Arg::new("not-started").help("Show not-started tasks").short('n').long("not-started").action(ArgAction::SetTrue))
-                .arg(Arg::new("overdue").help("Show tasks past their deadline").short('o').long("overdue").action(ArgAction::SetTrue))
-                .arg(Arg::new("should-start").help("Show tasks that have passed their scheduled start date but have not yet started").short('s').long("should-start").action(ArgAction::SetTrue))
+                .arg(Arg::new("overdue").help("Show tasks past their deadline").long("overdue").action(ArgAction::SetTrue))
+                .arg(Arg::new("should-start").help("Show tasks that have passed their scheduled start date but have not yet started").long("should-start").action(ArgAction::SetTrue))
                 .arg(Arg::new("scheduled-at").help("Show scheduled tasks for a specific date").long("scheduled-at"))
                 .arg(Arg::new("scheduled-before").help("Show tasks scheduled before a specific date").long("scheduled-before"))
                 .arg(Arg::new("scheduled-after").help("Show tasks scheduled after a specific date").long("scheduled-after"))
@@ -211,11 +209,16 @@ fn main() {
         }
         Some(("done", sub_m)) => {
             let id = sub_m.get_one::<u32>("id").unwrap();
+            let finish_time= NaiveDateTime::parse_from_str(&Local::now().format("%Y-%m-%d %H:%M:%S").to_string(), "%Y-%m-%d %H:%M:%S").ok();
             if tasks.is_empty() {
                 println!("No tasks yet");
             } else {
                 if let Some(task) = tasks.iter_mut().find(|t|t.id as u32 == *id) {
                     task.state = State::Done;
+                    task.finish_time = finish_time;
+                    if task.start_time.is_none() {
+                        task.start_time = finish_time;
+                    }
                 } else {
                     println!("There is no task with that number.");
                 }
@@ -383,8 +386,6 @@ fn from_json(s: &str) -> Todo {
             "Pending" => state_e = State::Pending,
             "Ongoing" => state_e = State::Ongoing,
             "Notstarted" => state_e = State::Notstarted,
-            "Overdue" => state_e = State::Overdue,
-            "Shouldstart" => state_e =State::Shouldstart,
             _ => state_e = State::Done,
     };
 
