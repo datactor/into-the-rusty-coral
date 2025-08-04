@@ -78,11 +78,11 @@ fn main() {
                 .about("Edit todo task")
                 .arg(Arg::new("id").required(true).value_parser(value_parser!(u32)).help("ID to edit"))
                 .arg(Arg::new("title").help("Edit title").short('t').long("title"))
-                .arg(Arg::new("creat").help("Edit creat_time").short('c').long("creat"))
-                .arg(Arg::new("start").help("Edit start_time").short('s').long("start"))
-                .arg(Arg::new("finish").help("Edit finish_time").short('f').long("finish"))
-                .arg(Arg::new("scheduled").help("Edit scheduled_time").short('h').long("scheduled"))
-                .arg(Arg::new("deadline").help("Edit deadline").short('d').long("deadline"))
+                .arg(Arg::new("creat").help("Edit creat_time").value_parser(verification_time).short('c').long("creat"))
+                .arg(Arg::new("start").help("Edit start_time").value_parser(verification_time).short('s').long("start"))
+                .arg(Arg::new("finish").help("Edit finish_time").value_parser(verification_time).short('f').long("finish"))
+                .arg(Arg::new("scheduled").help("Edit scheduled_time").value_parser(verification_time).short('h').long("scheduled"))
+                .arg(Arg::new("deadline").help("Edit deadline").value_parser(verification_time).short('d').long("deadline"))
         )
         .subcommand(
             Command::new("done")
@@ -120,13 +120,12 @@ fn main() {
             let none = String::from("None");
             let scheduled_time = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("scheduled").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
             let deadline_time = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("deadline").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
-            let creat_time= NaiveDateTime::parse_from_str(&Local::now().format("%Y-%m-%d %H:%M:%S").to_string(), "%Y-%m-%d %H:%M:%S").ok();
+            let creat_time= NaiveDateTime::parse_from_str(&Local::now().format("%Y-%m-%d_%H:%M:%S").to_string(), "%Y-%m-%d_%H:%M:%S").ok();
 
             tasks.push(Todo::new(id, title.to_string(), creat_time, scheduled_time, deadline_time));
             save_tasks(tasks);
         }
         Some(("list", sub_m)) => {
-            let mut filters = vec![];
             let done = sub_m.get_flag("done");
             let pending = sub_m.get_flag("pending");
             let ongoing = sub_m.get_flag("ongoing");
@@ -136,38 +135,138 @@ fn main() {
             let should_start = sub_m.get_flag("should-start");
             
             let none = String::from("None");
-            let scheduled_at = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("scheduled-at").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
-            let scheduled_before = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("scheduled-before").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
-            let scheduled_after = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("scheduled-after").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
-            let deadline_at = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("deadline-at").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
-            let deadline_before = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("deadline-before").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
-            let deadline_after = NaiveDateTime::parse_from_str(sub_m.get_one::<String>("deadline-after").unwrap_or(&none), "%Y-%m-%d_%H:%M:%S").ok();
+            let scheduled_at = sub_m.get_one::<String>("scheduled-at").map(String::as_str);
+            let scheduled_at = match scheduled_at {
+                Some("today") => Some(Local::now().date_naive()),
+                Some(date_str) => NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok(),
+                None => None,
+            };
+            let scheduled_before = NaiveDate::parse_from_str(sub_m.get_one::<String>("scheduled-before").unwrap_or(&none), "%Y-%m-%d").ok();
+            let scheduled_after = NaiveDate::parse_from_str(sub_m.get_one::<String>("scheduled-after").unwrap_or(&none), "%Y-%m-%d").ok();
+            let deadline_at = sub_m.get_one::<String>("deadline-at").map(String::as_str);
+            let deadline_at = match deadline_at {
+                Some("today") => Some(Local::now().date_naive()),
+                Some(date_str) => NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok(),
+                None => None,
+            };
+            let deadline_before = NaiveDate::parse_from_str(sub_m.get_one::<String>("deadline-before").unwrap_or(&none), "%Y-%m-%d").ok();
+            let deadline_after = NaiveDate::parse_from_str(sub_m.get_one::<String>("deadline-after").unwrap_or(&none), "%Y-%m-%d").ok();
+            
+            let mut state_filters = vec![];
+            let mut timeout_filters = false;
+            let mut day_filters: Option<NaiveDate> = None;
+            let now = NaiveDateTime::parse_from_str(&Local::now().format("%Y-%m-%d_%H:%M:%S").to_string(), "%Y-%m-%d_%H:%M:%S").ok();
 
             if tasks.is_empty() {
                 println!("No tasks yet");
             } else {
                 println!("ID.   title.              creat_time.          start_time.          finish_time.         scheduled_time.      deadline.            done.");
                 if done {
-                    filters.push(State::Done);
+                    state_filters.push(State::Done);
                 }
                 if pending {
-                    filters.push(State::Pending);
+                    state_filters.push(State::Pending);
                 }
                 if ongoing {
-                    filters.push(State::Ongoing);
+                    state_filters.push(State::Ongoing);
                 }
                 if not_started {
-                    filters.push(State::Notstarted);
+                    state_filters.push(State::Notstarted);
+                }
+                if (overdue, should_start) != (false, false) {
+                    timeout_filters = true;
+                }
+                if (scheduled_at, scheduled_before, scheduled_after, deadline_at, deadline_before, deadline_after) != (None, None, None, None, None, None) {
+                    day_filters = Some(Local::now().date_naive());
                 }
 
-                if filters.is_empty() {
+                if state_filters.is_empty() && !timeout_filters && day_filters == None { // 필터 없는경우
                     for task in &tasks {
                         show_list(task);
                     }
-                } else {
+                } else { // 필터 있는경우
                     for task in &tasks {
-                        if filters.contains(&task.state) {
-                            show_list(task);
+                        let mut overdue_check = false;
+                        let mut should_check = false;
+                        if timeout_filters { // overdue, should 계산
+                            if overdue && task.deadline_time != None && task.deadline_time < now {
+                                overdue_check = true;
+                            }
+                            if should_start && task.scheduled_time != None && task.scheduled_time < now {
+                                should_check = true;
+                            }
+                        }
+                        let mut s_at = false;
+                        let mut s_before = false;
+                        let mut s_after = false;
+                        let mut d_at = false;
+                        let mut d_before = false;
+                        let mut d_after = false;
+                        if day_filters != None { // at, before, after 계산
+                            if scheduled_at != None && task.scheduled_time != None && task.scheduled_time.map(|d| d.date()) == scheduled_at {
+                                s_at = true;
+                            }
+                            if scheduled_before != None && task.scheduled_time != None && task.scheduled_time.map(|d| d.date()) <= scheduled_before {
+                                s_before = true;
+                            }
+                            if scheduled_after != None && task.scheduled_time != None && task.scheduled_time.map(|d| d.date()) >= scheduled_after {
+                                s_after = true;
+                            }
+                            if deadline_at != None && task.deadline_time != None && task.deadline_time.map(|d| d.date()) == deadline_at {
+                                d_at = true;
+                            }
+                            if deadline_before != None && task.deadline_time != None && task.deadline_time.map(|d| d.date()) <= deadline_before {
+                                d_before = true;
+                            }
+                            if deadline_after != None && task.deadline_time != None && task.deadline_time.map(|d| d.date()) >= deadline_after {
+                                d_after = true;
+                            }
+                        }
+
+                        if state_filters.is_empty() && day_filters == None { // timeout 만 있는경우
+                            if overdue_check || should_check {
+                                show_list(task);
+                            }
+                        }
+                        else if !timeout_filters && day_filters == None { // state 만 있는경우
+                            if state_filters.contains(&task.state) {
+                                show_list(task);
+                            }
+                        }
+                        else if state_filters.is_empty() && !timeout_filters { // day 만 있는경우
+                            if s_at || s_before || s_after || d_at || d_before || d_after {
+                                show_list(task);
+                            }
+                        }
+                        else if day_filters == None { // timeout, state 경우
+                            if state_filters.contains(&task.state) { 
+                                if overdue_check || should_check {
+                                    show_list(task);
+                                }
+                            }
+                        }
+                        else if state_filters.is_empty() { // timeout, day 경우
+                            if overdue_check || should_check { 
+                                if s_at || s_before || s_after || d_at || d_before || d_after {
+                                    show_list(task);
+                                }
+                            }
+                        }
+                        else if !timeout_filters { // state, day 경우
+                            if state_filters.contains(&task.state) { 
+                                if s_at || s_before || s_after || d_at || d_before || d_after {
+                                    show_list(task);
+                                }
+                            }
+                        }
+                        else { // state, timeout, day 경우
+                            if state_filters.contains(&task.state) { 
+                                if s_at || s_before || s_after || d_at || d_before || d_after {
+                                    if overdue_check || should_check {
+                                        show_list(task);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
