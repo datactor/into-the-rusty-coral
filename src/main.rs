@@ -3,11 +3,11 @@ use crate::commands::{cmd_add, cmd_delete, cmd_done, cmd_edit, cmd_list, cmd_pen
 mod cli; // clap 인터페이스
 mod commands;
 mod model;
-mod store; // 데이터 저장/로드/패킹/언패킹 // clap 커맨드 기능 // Todo 모델
+mod store;
+mod utils; // 데이터 저장/로드/패킹/언패킹 // clap 커맨드 기능 // Todo 모델
 
 fn main() {
-    let cli = cli::build_cli();
-    let matches = cli.get_matches();
+    let matches = cli::build_cli().get_matches();
 
     let mut tasks = store::load_tasks();
 

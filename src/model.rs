@@ -16,14 +16,14 @@ impl Todo {
     pub fn new(
         id: u32,
         title: String,
-        creat_time: Option<NaiveDateTime>,
+        create_time: Option<NaiveDateTime>,
         scheduled_time: Option<NaiveDateTime>,
         deadline: Option<NaiveDateTime>,
     ) -> Self {
         Self {
             id,
             title,
-            creat_time,
+            creat_time: create_time,
             start_time: None,
             finish_time: None,
             scheduled_time,
