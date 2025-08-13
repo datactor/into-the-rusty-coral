@@ -1,8 +1,8 @@
-use clap::{ArgAction, Arg, Command, ArgMatches, value_parser};
 use crate::store::verification_time;
+use clap::{value_parser, Arg, ArgAction, Command};
 
-pub fn clap() -> ArgMatches {
-    let matches = Command::new("todo")
+pub fn build_cli() -> Command {
+    Command::new("todo")
         .version("0.1.0")
         .about("A simple todo CLI app")
         .subcommand_required(true)
@@ -61,6 +61,4 @@ pub fn clap() -> ArgMatches {
             .about("pending task")
             .arg(Arg::new("id").required(true).value_parser(value_parser!(u32)).help("ID to pending"))
         )
-        .get_matches();
-    matches
 }

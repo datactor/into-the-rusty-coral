@@ -2,7 +2,7 @@ use dirs::home_dir;
 use std::fs;
 use std::path::PathBuf;
 use chrono::NaiveDateTime;
-use crate::{State, Todo};
+use crate::model::{State, Todo};
 
 // 날짜_시간 입력 검사 (%Y-%m-%d_%H:%M:%S)
 pub fn verification_time(s: &str) -> Result<String, String> {
@@ -23,12 +23,14 @@ pub fn show_list(task: &Todo) {
     task.deadline_time.map_or("None".to_string(), |dt| dt.to_string()), 
     task.state);
 }
+
 // json 파일 저장 및 경로불러오기
 pub fn get_data_file() -> PathBuf {
     let mut path = home_dir().unwrap();
     path.push("todo.json");
     path
 }
+
 // json 파일 데이터 병렬화
 pub fn load_tasks() -> Vec<Todo> {
     let path = get_data_file();
@@ -57,8 +59,9 @@ pub fn load_tasks() -> Vec<Todo> {
         Vec::new()
     }
 }
+
 // json 파일로 데이터 직렬화
-pub fn save_tasks(tasks: Vec<Todo>) {
+pub fn save_tasks(tasks: &[Todo]) {
     let path = get_data_file();
     let contents = format!(
         "[{}]",
@@ -71,6 +74,7 @@ pub fn save_tasks(tasks: Vec<Todo>) {
 
     fs::write(path, contents).unwrap()
 }
+
 // 데이터 헤더정보 입력 및 언패킹
 pub fn to_json(task: &Todo) -> String {
     format!(
@@ -85,6 +89,7 @@ pub fn to_json(task: &Todo) -> String {
         task.state
     )
 }
+
 // 헤더정보 토대로 데이터 패킹
 pub fn from_json(s: &str) -> Todo {
     let mut id = 0;
@@ -128,5 +133,4 @@ pub fn from_json(s: &str) -> Todo {
     };
 
     Todo { id, title, creat_time, start_time, finish_time, scheduled_time, deadline_time, state:state_e }
-    
 }
