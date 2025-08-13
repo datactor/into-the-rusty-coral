@@ -1,43 +1,24 @@
-use chrono::{NaiveDateTime};
-mod cli; // clap 인터페이스
-mod store; // 데이터 저장/로드/패킹/언패킹
-mod commands; // clap 커맨드 기능
+use crate::commands::{cmd_add, cmd_delete, cmd_done, cmd_edit, cmd_list, cmd_pending, cmd_start};
 
-#[derive(Debug)]
-struct Todo {
-    id: u32,
-    title: String,
-    creat_time: Option<NaiveDateTime>,
-    start_time: Option<NaiveDateTime>,
-    finish_time: Option<NaiveDateTime>,
-    scheduled_time: Option<NaiveDateTime>,
-    deadline_time: Option<NaiveDateTime>,
-    state: State,
-}
-impl Todo {
-    pub fn new(id: u32, title: String, creat_time: Option<NaiveDateTime>, scheduled_time: Option<NaiveDateTime>, deadline: Option<NaiveDateTime>) -> Self {
-        Self {
-            id,
-            title,
-            creat_time,
-            start_time: None,
-            finish_time: None,
-            scheduled_time,
-            deadline_time: deadline,
-            state: State::Notstarted,
-        }
-    }
-}
-#[derive(Debug)]
-#[derive(PartialEq)]
-pub enum State {
-    Done,
-    Pending,
-    Ongoing,
-    Notstarted,
-}
+mod cli; // clap 인터페이스
+mod commands;
+mod model;
+mod store;
+mod utils; // 데이터 저장/로드/패킹/언패킹 // clap 커맨드 기능 // Todo 모델
 
 fn main() {
-    let matches = cli::clap(); // clap 인터페이스 호출
-    commands::commands(matches); // clap 명령어에 따른 동작호출
+    let matches = cli::build_cli().get_matches();
+
+    let mut tasks = store::load_tasks();
+
+    match matches.subcommand() {
+        Some(("add", sub_m)) => cmd_add(sub_m, &mut tasks),
+        Some(("list", sub_m)) => cmd_list(sub_m, &tasks),
+        Some(("edit", sub_m)) => cmd_edit(sub_m, &mut tasks),
+        Some(("done", sub_m)) => cmd_done(sub_m, &mut tasks),
+        Some(("delete", sub_m)) => cmd_delete(sub_m, &mut tasks),
+        Some(("start", sub_m)) => cmd_start(sub_m, &mut tasks),
+        Some(("pending", sub_m)) => cmd_pending(sub_m, &mut tasks),
+        _ => unreachable!(),
+    }
 }
